@@ -1,0 +1,48 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: tt-github-pr-trigger-template-{{ .Values.projectName }}
+spec:
+  params:
+    - name: revision
+    - name: deploy-staging
+    - name: deploy-production
+    - name: repo-url
+    - name: author
+    - name: ref
+    - name: repo-full-name
+    - name: test-all
+    - name: pr-ref
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: pr-$(tt.params.pr-ref)-$(tt.params.author)-
+      spec:
+        serviceAccountName: service-account-{{ .Values.projectName }}
+        pipelineRef:
+          name: {{ .Values.projectName}}-pipeline
+        workspaces:
+          - name: shared-data
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 10Gi
+        params:
+          - name: repo-url
+            value: $(tt.params.repo-url)
+          - name: revision
+            value: $(tt.params.revision)
+          - name: repo-full-name
+            value: $(tt.params.repo-full-name)
+          - name: ref
+            value: $(tt.params.ref)
+          - name: deploy-staging
+            value: $(tt.params.deploy-staging)
+          - name: deploy-production
+            value: $(tt.params.deploy-production)
+          - name: test-all
+            value: $(tt.params.test-all)

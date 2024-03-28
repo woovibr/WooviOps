@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  destination:
+    namespace: tekton-pipelines
+    name: in-cluster
+  project: woovi-ops-dev
+  source:
+    repoURL: git@github.com:woovibr/woovi-k8s-dev.git
+    path: deployments/tekton
+    targetRevision: HEAD
+    helm:
+      releaseName: 'tekton'

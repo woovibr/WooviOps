@@ -1,0 +1,215 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: {{ .Values.projectName }}-pipeline
+spec:
+  workspaces:
+    - name: shared-data
+  params:
+    - name: repo-url
+      type: string
+    - name: revision
+      type: string
+    - name: repo-full-name
+      type: string
+    - name: ref
+      type: string
+    - name: deploy-staging
+      type: string
+    - name: deploy-production
+      type: string
+    - name: test-all
+      type: string
+  tasks:
+    - name: fetch-source
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: task-git-clone
+          - name: namespace
+            value: tekton-pipelines
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+        - name: depth
+          value: 2
+      workspaces:
+        - name: output
+          workspace: shared-data
+    - name: install-deps
+      runAfter: ["fetch-source"]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: task-install-deps
+          - name: namespace
+            value: tekton-pipelines
+      params: 
+        - name: install-script
+          value: {{ .Values.install_script }}
+        - name: post-install-script
+          value: {{ default "echo no script" .Values.post_install_script }}
+      ## task default params
+        - name: TARGET_URL
+          value: https://tekton.woovi-ops.example/#/namespaces/tekton-woovi-server/pipelineruns/$(context.pipelineRun.name)
+        - name: REPO_FULL_NAME
+          value: $(params.repo-full-name)
+        - name: SHA
+          value: $(params.revision)
+      ## task default params
+      workspaces:
+        - name: source
+          workspace: shared-data
+    {{- range $i, $value := .Values.packages }}
+    - name: test-{{ $value }}
+      runAfter: ["install-deps"]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: task-test-pkg
+          - name: namespace
+            value: tekton-pipelines
+      params:
+        - name: pkg
+          value: {{ $value }}
+        - name: diff
+          value: $(tasks.fetch-source.results.diff)
+        - name: test-all
+          value: $(params.test-all)
+      ## task default params
+        - name: TARGET_URL
+          value: https://tekton.woovi-ops.example/#/namespaces/tekton-woovi-server/pipelineruns/$(context.pipelineRun.name)
+        - name: REPO_FULL_NAME
+          value: $(params.repo-full-name)
+        - name: SHA
+          value: $(params.revision)
+      ## task default params
+      workspaces:
+        - name: source
+          workspace: shared-data
+    {{- end }}
+    - name: list-source
+      runAfter: ["test-{{ last .Values.packages }}"]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: task-list-source
+          - name: namespace
+            value: tekton-pipelines
+      workspaces:
+        - name: source
+          workspace: shared-data
+   {{- range $serviceName, $service := .Values.services }}
+    - name: registry-update-{{ $service.name }} 
+      when:
+        - input: "$(params.deploy-staging)"
+          operator: in
+          values: ["true"]
+      runAfter: ["list-source"]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: task-update-registry
+          - name: namespace
+            value: tekton-pipelines
+      params:
+        - name: DOCKERFILE
+          value: {{ $service.DOCKERFILE }}
+        - name: DOCKERFILE_CONTEXT_PATH
+          value: {{ $service.DOCKERFILE_CONTEXT_PATH }}
+        - name: IMAGE
+          value: {{ $service.IMAGE }}
+        - name: build_script
+          value: {{ $service.build_script }}
+        - name: image-tag
+          value: $(tasks.fetch-source.results.commit)
+        - name: ref
+          value: $(params.ref)
+        - name: deploy-production
+          value: $(params.deploy-production)
+      workspaces:
+        - name: source
+          workspace: shared-data
+    - name: deploy-staging-{{ $service.name }}
+      when:
+        - input: "$(params.deploy-staging)"
+          operator: in
+          values: ["true"]
+      runAfter: ["registry-update-{{ $service.name }}"]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: kubernetes-actions
+          - name: namespace
+            value: tekton-pipelines
+      params:
+        - name: "script"
+          value: |
+            #!/usr/bin/env bash
+              export RELEASE_IMAGE=registry.ops/{{ $service.IMAGE }}:$(tasks.fetch-source.results.commit)
+              kubectl get deployments -n {{ $service.target_namespace }}
+
+              kubectl -n {{ $service.target_namespace }} set image deployment/{{ $service.deployment_name }} {{ $service.deployment_name }}=$RELEASE_IMAGE --record 
+              kubectl  -n {{ $service.target_namespace }} rollout status deployment/{{ $service.deployment_name }} --timeout 5m
+      ## task default params
+        - name: TARGET_URL
+          value: https://tekton.woovi-ops.example/#/namespaces/tekton-woovi-server/pipelineruns/$(context.pipelineRun.name)
+        - name: REPO_FULL_NAME
+          value: $(params.repo-full-name)
+        - name: SHA
+          value: $(params.revision)
+        - name: pkg
+          value: {{ $service.deployment_name }}
+      ## task default params
+    - name: deploy-prod-{{ $service.name }}
+      when:
+        - input: "$(params.deploy-production)"
+          operator: in
+          values: ["true"]
+      runAfter: ["deploy-staging-{{ $service.name }}"]
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: argocd-sync
+          - name: namespace
+            value: tekton-pipelines
+      params:
+        - name: application-name
+          value: {{ $service.name }}
+        - name: flags
+          value: --insecure
+      ## task default params
+        - name: TARGET_URL
+          value: https://tekton.woovi-ops.example/#/namespaces/tekton-woovi-server/pipelineruns/$(context.pipelineRun.name)
+        - name: REPO_FULL_NAME
+          value: $(params.repo-full-name)
+        - name: SHA
+          value: $(params.revision)
+        - name: pkg
+          value: {{ $service.deployment_name }}
+      ## task default params
+
+    {{- end }}

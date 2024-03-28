@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: server-woovi-ops-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  destination:
+    namespace: argocd
+    name: in-cluster
+  project: woovi-ops-dev
+  source:
+    repoURL: git@github.com:woovibr/woovi-k8s-dev.git
+    path: deployments/server
+    targetRevision: HEAD
+    helm:
+      releaseName: 'server-woovi-ops-dev'

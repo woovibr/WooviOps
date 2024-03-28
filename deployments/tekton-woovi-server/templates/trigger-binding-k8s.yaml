@@ -1,0 +1,24 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: tb-github-pr-trigger-binding-{{ .Values.projectName }}
+spec:
+  params:
+    - name: revision
+      value: $(body.after)
+    - name: repo-url
+      value: $(body.repository.ssh_url)
+    - name: author
+      value: $(extensions.author)
+    - name: pr-ref
+      value: $(extensions.pr-ref)
+    - name: ref
+      value: $(body.ref)
+    - name: repo-full-name
+      value: $(body.repository.full_name)
+    - name: deploy-staging
+      value: $(extensions.deploy-staging)
+    - name: deploy-production
+      value: $(extensions.deploy-production)
+    - name: test-all
+      value: $(extensions.test-all)

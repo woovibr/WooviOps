@@ -1,0 +1,16 @@
+awoovi-opspiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: container-registry
+spec:
+  ports:
+    - name: registry
+      nodePort: 32000
+      port: 5000
+      protocol: TCP
+      targetPort: 5000
+  selector:
+    app: registry
+  sessionAffinity: None
+  type: NodePort

@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-browser
+  labels:
+    app: registry-browser
+  namespace: container-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry-browser
+  template:
+    metadata:
+      labels:
+        app: registry-browser
+    spec:
+      containers:
+        - name: registry-browser
+          image: klausmeyer/docker-registry-browser
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DOCKER_REGISTRY_URL
+              value: "http://registry.container-registry:5000"  # Replace with your actual registry URL
+            - name: NO_SSL_VERIFICATION
+              value: "true"  # Set to "true" if your registry uses self-signed certificates
+            - name: SECRET_KEY_BASE
+              value: ""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-browser
+  namespace: container-registry
+spec:
+  selector:
+    app: registry-browser
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

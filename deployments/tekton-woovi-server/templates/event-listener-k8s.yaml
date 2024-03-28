@@ -1,0 +1,34 @@
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: tekton-github-pr-{{ .Values.projectName }}
+spec:
+  serviceAccountName: service-account-{{ .Values.projectName }}
+  triggers:
+    - name: pr-trigger
+      interceptors:
+        - ref:
+            name: "cel"
+            kind: ClusterInterceptor
+            apiVersion: triggers.tekton.dev
+          params:
+            - name: "filter"
+              value: >
+                header.match('x-github-event', 'push') && body.ref.split('/')[1] != 'tags'  && ( body.after != '0000000000000000000000000000000000000000' || body.after != '0000000000000000000000000000000000000000')
+            - name: "overlays"
+              value:
+                - key: author
+                  expression: body.pusher.name.lowerAscii().replace('/','-').replace('.', '-').replace('_', '-')
+                - key: pr-ref
+                  expression: body.ref.lowerAscii().replace("/", '-')
+                - key: deploy-staging
+                  expression: body.ref.contains("main")  
+                - key: deploy-production
+                  expression: body.ref.contains("production")
+                - key: test-all
+                  expression: body.head_commit.modified.exists(s, s.contains("yarn.lock")) || body.ref.contains("test-all")
+      bindings:
+        - ref: tb-github-pr-trigger-binding-{{ .Values.projectName }}
+      template:
+        ref: tt-github-pr-trigger-template-{{ .Values.projectName }}

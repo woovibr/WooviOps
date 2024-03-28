@@ -1,0 +1,19 @@
+kind: AppProject
+apiVersion: argoproj.io/v1alpha1
+metadata:
+  name: woovi-ops-dev
+  namespace: argocd
+spec:
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  destinations:
+    - namespace: '*'
+      server: '*'
+  sourceRepos:
+    - '*'
+  sourceNamespaces:
+    - '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

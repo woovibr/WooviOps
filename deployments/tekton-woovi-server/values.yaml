@@ -1,0 +1,45 @@
+projectName: 'tekton-woovi-server'
+
+packages:
+  [
+    'jobs',
+    'api',
+    'provider-bs2',
+    'console',
+    'provider-fiducia',
+    'graphql',
+    'ledger',
+    'provider-matera',
+    'modules',
+    'openpix',
+    'migration',
+    'movement',
+    'card-transaction',
+    'main',
+    'search'
+  ]
+
+install_script: 'commands that will run for dependency installation'
+
+post_install_script: 'aditional commands that run after dependency installation'
+
+### Services map to variables we need to perform certain actions based on build and deployment of our monorepo services
+services:
+  woovi-server:
+    name: 'server'
+    package: 'main'
+    IMAGE: 'woovi-server-wp'
+    DOCKERFILE_CONTEXT_PATH: './packages/main'
+    DOCKERFILE: './packages/main/Dockerfile.ci.server'
+    build_script: 'yarn build:server:wp'
+    deployment_name: 'woovi-ops-dev-server'
+    target_namespace: 'woovi-ops-dev'
+  woovi-worker:
+    name: 'worker'
+    package: 'jobs'
+    IMAGE: 'woovi-worker-wp'
+    DOCKERFILE_CONTEXT_PATH: './packages/jobs'
+    DOCKERFILE: './packages/jobs/Dockerfile.ci'
+    build_script: 'yarn build:worker:wp'
+    deployment_name: 'woovi-ops-dev-worker'
+    target_namespace: 'woovi-ops-dev'

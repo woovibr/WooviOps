@@ -1,0 +1,22 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: task-run
+  namespace: {{ .Values.projectName }}
+spec:
+  description: >-
+    A generic task to run any bash command in any given image
+  workspaces:
+    - name: source
+  params:
+    - name: run
+      type: string
+    - name: image
+      type: string
+      default: "ubuntu:latest"
+  steps:
+    - name: step
+      image: $(params.image)
+      workingDir: $(workspaces.source.path)
+      script: >
+        $(params.run)

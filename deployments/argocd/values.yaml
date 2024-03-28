@@ -1,0 +1,18 @@
+argo-cd:
+  dex:
+    enabled: false
+  notifications:
+    enabled: false
+  applicationSet:
+    enabled: false
+  server:
+    config:
+      accounts.devops: apiKey, login
+      accounts.devops.enabled: "true"
+
+    rbacConfig:
+      policy.csv: |
+        p, devops, applications, get, */*,allow
+        p, devops, applications, sync, */*,allow
+    extraArgs:
+      - --insecure

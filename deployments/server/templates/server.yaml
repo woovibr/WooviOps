@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: woovi-ops-dev
+  name: woovi-ops-dev-server
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: woovi-ops-dev-server
+  template:
+    metadata:
+      labels:
+        app: woovi-ops-dev-server
+    spec:
+      containers:
+        - name: woovi-ops-dev-server
+          image: registry.ops/woovi-server-wp:latest
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: 100m
+          ports:
+            - containerPort: 5001
+          command:
+            - node
+          startupProbe:
+            httpGet:
+              path: /status/?src=startupProbe
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /status/?src=livenessProbe
+              port: 5001
+            initialDelaySeconds: 15
+            periodSeconds: 10

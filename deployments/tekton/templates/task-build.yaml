@@ -1,0 +1,19 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: task-build
+  namespace: {{ .Values.projectName }}
+spec:
+  params:
+    - name: build-script
+      description: Script command to build the base package
+    - name: commit-sha
+  workspaces:
+    - name: source
+  steps:
+    - name: build-package
+      image: node:20-bullseye
+      workingDir: $(workspaces.source.path)
+      script: |
+        export COMMIT_SHA=$(params.commit-sha)
+        $(params.build-script)

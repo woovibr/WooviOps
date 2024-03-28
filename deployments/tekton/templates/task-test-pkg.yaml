@@ -1,0 +1,139 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: task-test-pkg
+  namespace: {{ .Values.projectName }}
+spec:
+  workspaces:
+    - name: source
+  params:
+    - name: pkg
+      description: package to run tests from
+      default: main
+    - name: diff
+    - name: test-all
+      description: if should run all tests
+      default: false
+  ## default gh status update params 
+    - name: REPO_FULL_NAME
+      description: |
+        The GitHub repository full name, e.g.: tektoncd/catalog
+      default: 'github.com'
+      type: string
+    - name: SHA
+      description: |
+        Commit SHA to set the status for.
+      type: string
+    - name: TARGET_URL
+      description: |
+        The target URL to associate with this status. This URL will be linked
+        from the GitHub UI to allow users to easily see the source of the
+        status.
+      default: 'https://tekton.woovi-ops.example/'
+      type: string
+    - name: CONTEXT
+      description: |
+        The GitHub context, A string label to differentiate this status from
+        the status of other systems. ie: "continuous-integration/tekton"
+      default: 'continuous-integration/tekton-install-deps'
+      type: string
+    - name: STATE
+      description: |
+        The state of the status. Can be one of the following `error`,
+        `failure`, `pending`, or `success`.
+      type: string
+      default: 'pending'
+  steps:
+    - name: tests
+      onError: continue
+      image: node:20-bullseye
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -xe
+
+        # Simulating a command that might fail
+        if [ $((RANDOM % 2)) -eq 0 ]; then
+          echo "Command succeeded"
+        sleep 0
+        else
+          echo "Command failed"
+         sleep 5
+        fi
+
+        DIFF="$(params.diff)"
+        
+        # Split the DIFF variable into an array using comma as delimiter
+        IFS=',' read -r -a diff_array <<< "$DIFF"
+        
+        for string in "${diff_array[@]}"; do
+        # Check if the string matches the target string
+        if [[ "$string" == "$(params.pkg)" || $(params.test-all) == true ]]; then
+          echo "Testing package: $string"
+          
+          REPO="$(basename "$(pwd)")"
+          cd ..
+          cp -r $REPO ./$(params.pkg)/
+          cd ./$(params.pkg)
+        
+          node --expose-gc ./node_modules/.bin/jest --logHeapUsage --passWithNoTests --maxWorkers=3 --forceExit --ci --silent --testPathPattern=/packages\/$(params.pkg)\/src\/.*\/__tests__\/.*\.spec.tsx?$
+
+          tested=true
+          break
+        fi
+      
+        done
+       
+        if [[ "$variable" == true && "$tested" != true ]]; then
+          echo "Variable is true"
+          echo "Testing package: $string"
+          
+          REPO="$(basename "$(pwd)")"
+          cd ..
+          cp -r $REPO ./$(params.pkg)/
+          cd ./$(params.pkg)
+        
+          node --expose-gc ./node_modules/.bin/jest --logHeapUsage --passWithNoTests --maxWorkers=3 --forceExit --ci --silent --testPathPattern=/packages\/$(params.pkg)\/src\/.*\/__tests__\/.*\.spec.tsx?$
+
+        fi
+
+        #write status to workspace
+        echo "true" > /workspace/RESULT-$(params.pkg)
+    - name: update-status-result
+      image: node:latest
+      onError: continue
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -xe
+        
+        # Generate a random number between 0 and 10
+        random_sleep=$((RANDOM % 11))
+        
+        sleep $random_sleep
+
+        export RESULT=$(cat /workspace/RESULT-$(params.pkg))
+        echo $RESULT
+        
+        if [ "$RESULT" != true ]; then
+        STATE=failure
+        DESCRIPTION="step failed!"
+        echo "Updating status to failure"
+        else
+        STATE=success
+        DESCRIPTION="All good!"
+        echo "Updating status to success"
+        fi
+
+        TOKEN={{ .Values.gh_token }}
+        SHA=$(params.SHA)
+        TARGET_URL=$(params.TARGET_URL)
+        
+        DATA="{\"state\": \"$STATE\", \"target_url\": \"$(params.TARGET_URL)\", \"description\": \"$DESCRIPTION\", \"context\": \"Woovi - CI/CD - $(params.pkg) tests\"}"
+
+        HEADER="Authorization: Bearer $TOKEN"
+        HEADER+="\nAccept: application/vnd.github+json"
+        HEADER+="\nX-GitHub-Api-Version: 2022-11-28"
+        URL="https://api.github.com/repos/$(params.REPO_FULL_NAME)/statuses/$SHA" 
+        curl --http1.1 -L -X POST -H "$(echo -e "$HEADER")" -d "$DATA" "$URL"
+

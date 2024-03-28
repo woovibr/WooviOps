@@ -1,0 +1,114 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: argocd-sync
+  labels:
+    app.kubernetes.io/version: "0.2"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/categories: Deployment
+    tekton.dev/tags: deploy
+    tekton.dev/displayName: "argocd"
+    tekton.dev/platforms: "linux/amd64"
+spec:
+  description: >-
+    This task syncs (deploys) an Argo CD application and waits for it to be healthy.
+
+    To do so, it requires the address of the Argo CD server and some form of
+    authentication either a username/password or an authentication token.
+
+  params:
+    - name: application-name
+      description: name of the application to sync
+      type: string
+    - name: revision
+      description: the revision to sync to
+      default: HEAD
+      type: string
+    - name: flags
+      default: --
+      type: string
+    - name: argocd-version
+      default: v2.2.2
+      type: string
+  ## default gh status update params 
+    - name: REPO_FULL_NAME
+      description: |
+        The GitHub repository full name, e.g.: tektoncd/catalog
+      default: 'github.com'
+      type: string
+    - name: SHA
+      description: |
+        Commit SHA to set the status for.
+      default: ''
+      type: string
+    - name: TARGET_URL
+      description: |
+        The target URL to associate with this status. This URL will be linked
+        from the GitHub UI to allow users to easily see the source of the
+        status.
+      default: 'https://tekton.woovi-ops.example/'
+      type: string
+    - name: CONTEXT
+      description: |
+        The GitHub context, A string label to differentiate this status from
+        the status of other systems. ie: "continuous-integration/tekton"
+      default: 'continuous-integration/tekton-install-deps'
+      type: string
+    - name: STATE
+      description: |
+        The state of the status. Can be one of the following `error`,
+        `failure`, `pending`, or `success`.
+      type: string
+      default: 'pending'
+
+  stepTemplate:
+    envFrom:
+      - configMapRef:
+          name: argocd-env-configmap  # used for server address
+      - secretRef:
+          name: argocd-env-secret  # used for authentication (username/password or auth token)
+  steps:
+    - name: sync
+      onError: continue
+      image: quay.io/argoproj/argocd:$(params.argocd-version)
+      script: |
+        if [ -z "$ARGOCD_AUTH_TOKEN" ]; then
+          yes | argocd login "$ARGOCD_SERVER" --username="$ARGOCD_USERNAME" --password="$ARGOCD_PASSWORD";
+        fi
+        argocd app sync "woovi-$(params.application-name)" --revision "$(params.revision)" "$(params.flags)"
+        argocd app wait "woovi-$(params.application-name)" --health "$(params.flags)"
+
+        #write status to workspace
+        echo "true" > /workspace/RESULT
+    - name: update-status-result
+      image: node:latest
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -xe
+        
+        export RESULT=$(cat /workspace/RESULT)
+        echo $RESULT
+        
+        if [ "$RESULT" != true ]; then
+        STATE=failure
+        DESCRIPTION="step failed!"
+        echo "Updating status to failure"
+        else
+        STATE=success
+        DESCRIPTION="All good!"
+        echo "Updating status to success"
+        fi
+
+        TOKEN={{ .Values.gh_token }}
+        SHA=$(params.SHA)
+                TARGET_URL=$(params.TARGET_URL)
+        
+        DATA="{\"state\": \"$STATE\", \"target_url\": \"$(params.TARGET_URL)\", \"description\": \"$DESCRIPTION\", \"context\": \"Woovi - CI/CD - install deps\"}"
+
+        HEADER="Authorization: Bearer $TOKEN"
+        HEADER+="\nAccept: application/vnd.github+json"
+        HEADER+="\nX-GitHub-Api-Version: 2022-11-28"
+        URL="https://api.github.com/repos/$(params.REPO_FULL_NAME)/statuses/$SHA" 
+        curl --http1.1 -L -X POST -H "$(echo -e "$HEADER")" -d "$DATA" "$URL"

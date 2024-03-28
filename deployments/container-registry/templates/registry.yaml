@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: registry
+  name: registry
+  namespace: container-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      containers:
+        - env:
+            - name: REGISTRY_HTTP_ADDR
+              value: :5000
+            - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
+              value: "/var/lib/registry"
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "yes"
+          image: registry:2.8.1
+          imagePullPolicy: IfNotPresent
+          name: registry
+          ports:
+            - containerPort: 5000
+              name: registry
+              protocol: TCP
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /var/lib/registry
+              name: registry-data
+      restartPolicy: Always
+      volumes:
+        - name: registry-data
+          persistentVolumeClaim:
+            claimName: registry-claim
